@@ -1,0 +1,332 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Brendon Ushe"
+date: "October 1, 2017"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+keep_md: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Practical Machine Learning Project : Prediction Assignment Writeup
+
+
+## 1. Overview
+
+This document is the final report of the Peer Assessment project from Coursera's course Practical Machine Learning, as part of the Specialization in Data Science. It was built up in RStudio, using its knitr functions, meant to be published in html format.
+This analysis meant to be the basis for the course quiz and a prediction assignment writeup. The main goal of the project is to predict the manner in which 6 participants performed some exercise as described below. This is the "classe" variable in the training set. The machine learning algorithm described here is applied to the 20 test cases available in the test data and the predictions are submitted in appropriate format to the Course Project Prediction Quiz for automated grading.
+
+
+
+## 2. Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3xsbS5bVX
+
+## 3. Data Loading and Exploratory Analysis
+
+### a) Dataset Overview
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from http://groupware.les.inf.puc-rio.br/har. Full source:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. "Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13)". Stuttgart, Germany: ACM SIGCHI, 2013.
+
+My special thanks to the above mentioned authors for being so generous in allowing their data to be used for this kind of assignment.
+
+A short description of the datasets content from the authors' website:
+
+"Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg)."
+
+
+### b) Environment Preparation
+
+We first upload the R libraries that are necessary for the complete analysis.
+
+
+```{r EnvPrp}
+library(ggplot2)
+rm(list=ls())                # free up memory for the download of the data sets
+setwd("C:/Coursera/8.MachineLearning")
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+set.seed(12345)
+
+```
+
+### c) Data Loading and Cleaning
+
+
+The next step is loading the dataset from the URL provided above. The training dataset is then partinioned in 2 to create a Training set (70% of the data) for the modeling process and a Test set (with the remaining 30%) for the validations. The testing dataset is not changed and will only be used for the quiz results generation.
+
+
+```{r LdData}
+
+# set the URL for the download
+#UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing<-read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!"))
+
+# download the datasets
+#training <- read.csv(url(UrlTrain))
+#testing  <- read.csv(url(UrlTest))
+
+# create a partition with the training dataset 
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet  <- training[-inTrain, ]
+dim(TrainSet)
+
+dim(TestSet)
+
+```
+
+
+Check the Data Trainset and TestSet
+
+```{r LdDimTrain}
+
+
+dim(TrainSet)
+
+```
+
+
+```{r LdDimTest}
+
+dim(TestSet)
+
+```
+
+
+
+Both created datasets have 160 variables. Those variables have plenty of NA, that can be removed with the cleaning procedures below. The Near Zero variance (NZV) variables are also removed and the ID variables as well.
+
+
+```{r LdDim1}
+# remove variables with Nearly Zero Variance
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+dim(TrainSet)
+
+dim(TestSet)
+```
+
+
+```{r LdDim2}
+dim(TrainSet)
+
+```
+
+
+```{r LdDim3}
+
+dim(TestSet)
+
+```
+
+
+
+```{r LdDim4}
+
+# remove variables that are mostly NA
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet  <- TestSet[, AllNA==FALSE]
+dim(TrainSet)
+
+```
+
+
+```{r LdDim5}
+#dim(TrainSet)
+
+```
+
+
+```{r LdDim6}
+
+dim(TestSet)
+
+```
+
+
+```{r LdDim7}
+#install.packages("e1071", dep = TRUE)
+# remove identification only variables (columns 1 to 5)
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+
+```
+
+
+
+```{r LdDim8}
+dim(TrainSet)
+table(TrainSet$classe)
+```
+
+
+```{r LdDim9}
+
+dim(TestSet)
+
+```
+
+With the cleaning process above, the number of variables for the analysis has been reduced to 54 only.
+
+
+### d) Correlation Analysis
+
+A correlation among variables is analysed before proceeding to the modeling procedures.
+
+```{r corMatrix, echo=TRUE}
+
+corMatrix <- cor(TrainSet[, -54])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.08, tl.col = rgb(0, 0, 0))
+
+```
+
+The highly correlated variables are shown in dark colors in the graph above. To make an evem more compact analysis, a PCA (Principal Components Analysis) could be performed as pre-processing step to the datasets. Nevertheless, as the correlations are quite few, this step will not be applied for this assignment.
+
+
+## IV. Prediction Model Building
+Three methods will be applied to model the regressions (in the Train dataset) and the best one (with higher accuracy when applied to the Test dataset) will be used for the quiz predictions. The methods are: Random Forests, Decision Tree and Generalized Boosted Model, as described below.
+A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+### a) Method: Decision Trees
+
+
+```{r DecisionTree, echo=TRUE}
+
+# model fit
+set.seed(12345)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+```
+
+
+```{r DecisionTree1, echo=TRUE}
+
+# model fit
+set.seed(12345)
+    modfit1 <- train(classe ~ .,method='rpart',data=TrainSet)
+    fancyRpartPlot(modfit1$finalModel) 
+
+```
+
+
+```{r DecisionTree2, echo=TRUE}
+
+pred=predict(modfit1,newdata=TestSet)
+    z=confusionMatrix(pred,TestSet$classe)
+    z$table
+
+```
+
+
+```{r DecisionTree3, echo=TRUE}
+
+z$overall[1]   
+
+```
+
+
+From the confusion matrix it is clear the accuracy of "0.49" for this model fit clearly shows "no purity" hence this model fit is rejected.
+
+### b) Method: Random Forest
+
+### Random Forest Method
+
+Using Random forest method to do the prediction.
+
+
+```{r DeTr3, echo=TRUE}
+
+    modfit2=randomForest(classe~., data=TrainSet, method='class')
+    pred2 = predict(modfit2,TestSet,type='class') 
+    qplot(roll_belt, magnet_dumbbell_y, colour=classe, data=TrainSet) 
+
+```
+
+Random forest prediction model provides 99% accurancy hence this model has been choosen to do predict the testing data set.
+
+
+```{r DeTr4, echo=TRUE}
+
+  z2=confusionMatrix(pred2,TestSet$classe)
+    
+z2$table
+    
+ z2$overall[1]    
+```
+
+
+
+### c) Decision Tree
+
+```{r DeciTree1, echo=TRUE}
+
+
+# prediction on Test dataset
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, TestSet$classe)
+confMatDecTree
+
+```
+
+## d) Plot Matrix
+
+```{r PlotMatrix, echo=TRUE}
+
+# plot matrix results
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+
+```
+
+
+## Conclusion
+
+The accuracy of the 3 regression modeling methods above are:
+
+Random Forest : 0.9963
+Decision Tree : 0.7368
+GBM : 0.9839
+In that case, the Random Forest model will be applied to predict the 20 quiz results.
+
+
+From the above results the random forest method provides the best fit model and it is been considered for testing the test data set to submit results.
+
+```{r Conclu, echo=TRUE}
+ pred3 =  predict(modfit2,TestSet,type='class')
+    nofiles = length(pred3)
+    for (i in 1:nofiles){
+        filename =  paste0("problem_id",i,".txt")
+        write.table(pred3[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+    pred3
+```
